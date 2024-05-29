@@ -7,20 +7,22 @@
 # number of folds, model, et cetera
 
 train_save_model <- function(cleaned_df, outcome_df) {
-  # Trains a model using the cleaned dataframe and saves the model to a file.
-
-  # Parameters:
-  # cleaned_df (dataframe): The cleaned data from clean_df function to be used for training the model.
-  # outcome_df (dataframe): The data with the outcome variable (e.g., from PreFer_train_outcome.csv or PreFer_fake_outcome.csv).
-
-  ## This script contains a bare minimum working example
-  set.seed(1) # not useful here because logistic regression deterministic
+  # Install and load the rpart package
+  if (!require(rpart, quietly = TRUE)) {
+    install.packages("rpart")
+    library(rpart)
+  }
   
-  # Combine cleaned_df and outcome_df
-  model_df <- merge(cleaned_df, outcome_df, by = "nomem_encr")
+  # Merge cleaned_df and outcome_df
+  # Ensure to replace 'key_column' with the actual column used for merging
+  merged_data <- merge(cleaned_df, outcome_df, by = "nomem_encr")
   
-  # Logistic regression model
-  model <- glm(new_child ~ age, family = "binomial", data = model_df)
+  # Building the decision tree model
+  # Adjust control parameters as needed to prioritize early splits
+  model <- rpart(formula = as.factor(new_child) ~ as.factor(plan) + as.factor(age)+as.factor(marriage),
+                 data = merged_data,
+                 method = "class",
+                 control = rpart.control(minsplit = 1, minbucket = 1, maxdepth = 3))
   
   # Save the model
   saveRDS(model, "model.rds")

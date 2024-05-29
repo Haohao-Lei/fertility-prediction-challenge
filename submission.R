@@ -16,79 +16,46 @@
 # List your packages here. Don't forget to update packages.R!
 library(dplyr) # as an example, not used here
 
-clean_df <- function(df, background_df = NULL){
-  # Preprocess the input dataframe to feed the model.
-  ### If no cleaning is done (e.g. if all the cleaning is done in a pipeline) leave only the "return df" command
-
-  # Parameters:
-  # df (dataframe): The input dataframe containing the raw data (e.g., from PreFer_train_data.csv or PreFer_fake_data.csv).
-  # background (dataframe): Optional input dataframe containing background data (e.g., from PreFer_train_background_data.csv or PreFer_fake_background_data.csv).
-
-  # Returns:
-  # data frame: The cleaned dataframe with only the necessary columns and processed variables.
-
-  ## This script contains a bare minimum working example
-  # Create new age variable
-  df$age <- 2024 - df$birthyear_bg
-
-  # Selecting variables for modelling
-
-  keepcols = c('nomem_encr', # ID variable required for predictions,
-               'age')        # newly created variable
-  
-  ## Keeping data with variables selected
-  df <- df[ , keepcols ]
-
+clean_df <- function(df) {
+  #recode marriage
+  df$marriage <- 9999
+  df$marriage[df$burgstat_2020 < 5] <- 1
+  df$marriage[df$burgstat_2020 == 5] <- 2
+  df$marriage[df$marriage==9999] <- NA
+  #recode planned birth
+  df$plan <- 9999
+  df$plan[df$cf20m128==2] <- 0
+  df$plan[df$cf20m128!=2] <- 1
+  df$plan[df$plan==9999] <- NA
+  #recode age
+  df$age <- 0
+  df$age[df$cf20m004<=38&df$cf20m004>=26] <- 1
   return(df)
 }
 
-predict_outcomes <- function(df, background_df = NULL, model_path = "./model.rds"){
-  # Generate predictions using the saved model and the input dataframe.
-    
-  # The predict_outcomes function accepts a dataframe as an argument
-  # and returns a new dataframe with two columns: nomem_encr and
-  # prediction. The nomem_encr column in the new dataframe replicates the
-  # corresponding column from the input dataframe The prediction
-  # column contains predictions for each corresponding nomem_encr. Each
-  # prediction is represented as a binary value: '0' indicates that the
-  # individual did not have a child during 2021-2023, while '1' implies that
-  # they did.
-  
-  # Parameters:
-  # df (dataframe): The data dataframe for which predictions are to be made.
-  # background_df (dataframe): The background data dataframe for which predictions are to be made.
-  # model_path (str): The path to the saved model file (which is the output of training.R).
-
-  # Returns:
-  # dataframe: A dataframe containing the identifiers and their corresponding predictions.
-  
-  ## This script contains a bare minimum working example
-  if( !("nomem_encr" %in% colnames(df)) ) {
+predict_outcomes <- function(df = NULL, model_path = "./model.rds"){
+  if(!("nomem_encr" %in% colnames(df))) {
     warning("The identifier variable 'nomem_encr' should be in the dataset")
   }
-
+  
   # Load the model
   model <- readRDS(model_path)
-    
-  # Preprocess the fake / holdout data
-  df <- clean_df(df, background_df)
-
-  # Exclude the variable nomem_encr if this variable is NOT in your model
-  vars_without_id <- colnames(df)[colnames(df) != "nomem_encr"]
+  
+  # Preprocess the data
+  df <- clean_df(df) # Ensure this function does not introduce issues
+  
+  # Exclude the identifier variable if it is not a predictor
+  vars_without_id <- setdiff(colnames(df), "nomem_encr")
   
   # Generate predictions from model
-  predictions <- predict(model, 
-                         subset(df, select = vars_without_id), 
-                         type = "response") 
+  # Check appropriate type: 'class' for classification labels, 'prob' for probabilities
+  predictions <- predict(model, df[vars_without_id], type = "class") 
   
-  # Create predictions that should be 0s and 1s rather than, e.g., probabilities
-  predictions <- ifelse(predictions > 0.5, 1, 0)  
+  # Create output dataframe with two columns: nomem_encr and predictions
+  df_predict <- data.frame("nomem_encr" = df$nomem_encr, "prediction" = predictions)
+  names(df_predict) <- c("nomem_encr", "prediction") # Ensure column names are correct
   
-  # Output file should be data.frame with two columns, nomem_encr and predictions
-  df_predict <- data.frame("nomem_encr" = df[ , "nomem_encr" ], "prediction" = predictions)
-  # Force columnnames (overrides names that may be given by `predict`)
-  names(df_predict) <- c("nomem_encr", "prediction") 
-  
-  # Return only dataset with predictions and identifier
-  return( df_predict )
+  return(df_predict)
 }
+
+predict_outcomes(df)
